@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+</head>
+<body>
+<div id="map" style="height: 680px;"></div>
+<form id="searchForm">
+    <input type="text" id="query" name="query" placeholder="Search for a location" required>
+    <input type="submit" value="Search">
+    <input type="button" id="clearButton" value="Clear">
+    <input type="button" id="getCurrentLocationButton" value="Get Current Location">
+</form>
+<div id = "eta"></div>
+<script>
+    var map = L.map('map').setView([51.505, -0.09], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+    }).addTo(map);
+
+    var currentLocationMarker;
+    var destinationMarker;
+    var routeControl;
+
+    function addMarker(lat, lon, popupText) {
+        return L.marker([lat, lon]).addTo(map)
+            .bindPopup(popupText)
+            .openPopup();
+    }
+
+    document.getElementById('searchForm').addEventListener('submit', function(event) {
+        event.preventDefault();
+        var query = document.getElementById('query').value;
+
+        fetch('/search?query=' + encodeURIComponent(query))
+            .then(response => response.json())
+            .then(data => {
+                if (data) {
+                    if (destinationMarker) {
+                        map.removeLayer(destinationMarker);
+                    }
+                    var lat = data.lat;
+                    var lon = data.lon;
+                    destinationMarker = addMarker(lat, lon, data.display_name);
+
+                    if (currentLocationMarker) {
+                        plotRoute(currentLocationMarker.getLatLng(), destinationMarker.getLatLng());
+                    } else {
+                        map.setView([lat, lon], 13);
+                    }
+                } else {
+                    alert('Location not found');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while searching for the location');
+            });
+    });
+
+    document.getElementById('clearButton').addEventListener('click', function() {
+        document.getElementById('query').value = '';
+        if (currentLocationMarker) {
+            map.removeLayer(currentLocationMarker);
+            currentLocationMarker = null;
+        }
+        if (destinationMarker) {
+            map.removeLayer(destinationMarker);
+            destinationMarker = null;
+        }
+        if (routeControl) {
+            map.removeControl(routeControl);
+            routeControl = null;
+        }
+    });
+
+    document.getElementById('getCurrentLocationButton').addEventListener('click', function() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                var lat = position.coords.latitude;
+                var lon = position.coords.longitude;
+                if (currentLocationMarker) {
+                    map.removeLayer(currentLocationMarker);
+                }
+                currentLocationMarker = addMarker(lat, lon, 'Current Location');
+                map.setView([lat, lon], 13);
+
+                if (destinationMarker) {
+                    plotRoute(currentLocationMarker.getLatLng(), destinationMarker.getLatLng());
+                }
+            }, function(error) {
+                console.error('Error getting current location:', error);
+                alert('Unable to retrieve your location');
+            });
+        } else {
+            alert('Geolocation is not supported by this browser.');
+        }
+    });
+
+    function plotRoute(start, end) {
+        if (routeControl) {
+            map.removeControl(routeControl);
+        }
+
+        routeControl = L.Routing.control({
+            waypoints: [
+                L.latLng(start.lat, start.lng),
+                L.latLng(end.lat, end.lng)
+            ],
+            routeWhileDragging: true,
+            lineOptions: {
+                styles: [{ color: 'blue', opacity: 1, weight: 5 }]
+            },
+            createMarker: function(i, waypoint, n) {
+                return L.marker(waypoint.latLng).bindPopup(i === 0 ? 'Current Location' : 'Destination');
+            }
+        }).addTo(map);
+    }
+</script>
+</body>
+</html>
